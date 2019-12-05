@@ -1,0 +1,6 @@
+.DS_Store
+checkpoints/
+result/
+test_sample/
+__pycache__
+/.idea
