@@ -51,14 +51,16 @@ class Train_Dataset(data.Dataset):
         if transforms is None:
             if train_val == 'train':
                 self.transforms = T.Compose([
-                    T.Resize(size=(288, 144)),
+                    T.Resize(size=(384, 128), interpolation=3),
+                    T.Pad(10),
+                    T.RandomCrop((384, 128)),
                     T.RandomHorizontalFlip(),
                     T.ToTensor(),
                     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
             else:
                 self.transforms = T.Compose([
-                    T.Resize(size=(288, 144)),
+                    T.Resize(size=(384, 128), interpolation=3),
                     T.ToTensor(),
                     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
@@ -118,7 +120,7 @@ class Test_Dataset(data.Dataset):
 
         if transforms is None:
             self.transforms = T.Compose([
-                T.Resize(size=(288, 144)),
+                T.Resize(size=(384, 128), interpolation=3),
                 T.ToTensor(),
                 T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])

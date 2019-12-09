@@ -74,7 +74,7 @@ if len(gpu_ids)>0:
 # data.
 #
 data_transforms = transforms.Compose([
-        transforms.Resize((256,128), interpolation=3),
+        transforms.Resize((384, 128), interpolation=3),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
@@ -92,6 +92,7 @@ else:
                                              shuffle=False, num_workers=0) for x in ['gallery','query']}
 class_names = image_datasets['query'].classes
 use_gpu = torch.cuda.is_available()
+fea_cat = False
 
 ######################################################################
 # Load model
@@ -121,7 +122,10 @@ def extract_feature(model,dataloaders):
         n, c, h, w = img.size()
         count += n
         print(count)
-        ff = torch.FloatTensor(n,2078).zero_().cuda()
+        if fea_cat == True:
+            ff = torch.FloatTensor(n,2078).zero_().cuda()
+        else:
+            ff = torch.FloatTensor(n,2048).zero_().cuda()
     
         for i in range(2):
             if(i==1):
@@ -132,7 +136,8 @@ def extract_feature(model,dataloaders):
                     # bicubic is only  available in pytorch>= 1.1
                     input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
                 pred_attr, outputs = model(input_img)
-                #outputs = outputs[:,0:2048]
+                if fea_cat == False:
+                    outputs = outputs[:,0:2048]
                 ff += outputs
        
         fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)

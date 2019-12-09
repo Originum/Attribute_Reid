@@ -103,12 +103,13 @@ class ResNet50_joint(nn.Module):
         self.num_ftrs = 2048
         num_bottleneck = 512
         self.classifier_attribute = ClassBlock(self.num_ftrs, self.class_num, num_bottleneck)
-        self.classifier_reid = ClassBlock_reid(self.num_ftrs + self.class_num, self.id_num, 0.6)
+        self.classifier_reid = ClassBlock_reid(self.num_ftrs + self.class_num, self.id_num, 0.5)
         #for c in range(self.class_num):
         #    self.__setattr__('class_%d' % c, ClassBlock(self.num_ftrs, num_bottleneck) )
 
     def forward(self, x):
         x = self.features(x)
+        x = x.view(x.size(0), x.size(1))
         pred_attr = self.classifier_attribute(x)
 
         joint = torch.cat((x, pred_attr), 1)
