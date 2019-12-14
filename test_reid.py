@@ -36,12 +36,14 @@ parser.add_argument('--name', default='resnet50_joint', type=str, help='save mod
 parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--multi', default=False, action='store_true', help='use multiple query' )
 parser.add_argument('--ms',default='1', type=str,help='multiple_scale: e.g. 1 1,1.1  1,1.1,1.2')
+parser.add_argument('--stride', default=2, type=int, help='stride')
 
 opt = parser.parse_args()
 
 model_dir = os.path.join('./checkpoints', opt.dataset, opt.name)
 nclasses = 751
 attr_num = 30
+print("stride",opt.stride)
 
 
 str_ids = opt.gpu_ids.split(',')
@@ -123,9 +125,9 @@ def extract_feature(model,dataloaders):
         count += n
         print(count)
         if fea_cat == True:
-            ff = torch.FloatTensor(n,2078).zero_().cuda()
+            ff = torch.FloatTensor(n,542).zero_().cuda()
         else:
-            ff = torch.FloatTensor(n,2048).zero_().cuda()
+            ff = torch.FloatTensor(n,512).zero_().cuda()
     
         for i in range(2):
             if(i==1):
@@ -136,8 +138,8 @@ def extract_feature(model,dataloaders):
                     # bicubic is only  available in pytorch>= 1.1
                     input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
                 pred_attr, outputs = model(input_img)
-                if fea_cat == False:
-                    outputs = outputs[:,0:2048]
+                if fea_cat == True:
+                    outputs = torch.cat((outputs, pred_attr), 1)
                 ff += outputs
        
         fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
@@ -175,12 +177,12 @@ if opt.multi:
 # Load Collected data Trained model
 print('-------test-----------')
 
-model_structure = model_dict[name](attr_num, nclasses)
+model_structure = model_dict[name](attr_num, nclasses, opt.stride)
 
 model = load_network(model_structure)
 
 # Remove the final fc layer and classifier layer
-model.classifier_reid = nn.Sequential()
+model.classifier_reid.classifier = nn.Sequential()
 
 # Change to test mode
 model = model.eval()

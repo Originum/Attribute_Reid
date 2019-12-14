@@ -4,6 +4,7 @@ import torch
 from torch.utils import data
 import numpy as np
 from torchvision import transforms as T
+from .random_erasing import RandomErasing
 from .reid_dataset import import_MarketDuke_nodistractors
 from .reid_dataset import import_Market1501Attribute_binary
 from .reid_dataset import import_DukeMTMCAttribute_binary
@@ -11,7 +12,7 @@ from .reid_dataset import import_DukeMTMCAttribute_binary
 
 class Train_Dataset(data.Dataset):
 
-    def __init__(self, data_dir, dataset_name, transforms=None, train_val='train' ):
+    def __init__(self, data_dir, dataset_name, transforms=None, train_val='train', erasing_p = 0, SIZE = (256, 128)):
 
         train, query, gallery = import_MarketDuke_nodistractors(data_dir, dataset_name)
 
@@ -49,18 +50,28 @@ class Train_Dataset(data.Dataset):
         self.num_ids = len(self.train_ids)
 
         if transforms is None:
-            if train_val == 'train':
+            if train_val == 'train' and erasing_p > 0:
                 self.transforms = T.Compose([
-                    T.Resize(size=(384, 128), interpolation=3),
+                    T.Resize(size=SIZE, interpolation=3),
                     T.Pad(10),
-                    T.RandomCrop((384, 128)),
+                    T.RandomCrop(SIZE),
+                    T.RandomHorizontalFlip(),
+                    T.ToTensor(),
+                    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                    RandomErasing(probability = erasing_p, mean=[0.0, 0.0, 0.0])
+                ])
+            elif train_val == 'train' and erasing_p == 0:
+                self.transforms = T.Compose([
+                    T.Resize(size=SIZE, interpolation=3),
+                    T.Pad(10),
+                    T.RandomCrop(SIZE),
                     T.RandomHorizontalFlip(),
                     T.ToTensor(),
                     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
             else:
                 self.transforms = T.Compose([
-                    T.Resize(size=(384, 128), interpolation=3),
+                    T.Resize(size=SIZE, interpolation=3),
                     T.ToTensor(),
                     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
@@ -96,7 +107,7 @@ class Train_Dataset(data.Dataset):
 
 
 class Test_Dataset(data.Dataset):
-    def __init__(self, data_dir, dataset_name, transforms=None, query_gallery='query' ):
+    def __init__(self, data_dir, dataset_name, transforms=None, query_gallery='query', SIZE = (256, 128)):
         train, query, gallery = import_MarketDuke_nodistractors(data_dir, dataset_name)
 
         if dataset_name == 'Market-1501':
@@ -120,7 +131,7 @@ class Test_Dataset(data.Dataset):
 
         if transforms is None:
             self.transforms = T.Compose([
-                T.Resize(size=(384, 128), interpolation=3),
+                T.Resize(size=SIZE, interpolation=3),
                 T.ToTensor(),
                 T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])

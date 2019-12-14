@@ -36,7 +36,7 @@ class ClassBlock(nn.Module):
         add_block += [nn.Linear(input_dim, num_bottleneck)]
         add_block += [nn.BatchNorm1d(num_bottleneck)]
         add_block += [nn.LeakyReLU(0.1)]
-        add_block += [nn.Dropout(p=0.6)]
+        add_block += [nn.Dropout(p=0.5)]
         add_block += [nn.Linear(num_bottleneck, output_dim)]
         add_block += [nn.Sigmoid()]
 
@@ -88,7 +88,7 @@ class ClassBlock_reid(nn.Module):
 
 
 class ResNet50_joint(nn.Module):
-    def __init__(self, class_num, id_num):
+    def __init__(self, class_num, id_num, stride=2):
         super(ResNet50_joint, self).__init__()
         self.model_name = 'resnet50_joint'
         self.class_num = class_num
@@ -97,6 +97,9 @@ class ResNet50_joint(nn.Module):
         model_ft = models.resnet50(pretrained=True)
 
         # avg pooling to global pooling
+        if stride == 1:
+            model_ft.layer4[0].downsample[0].stride = (1,1)
+            model_ft.layer4[0].conv2.stride = (1,1)
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         model_ft.fc = nn.Sequential()
         self.features = model_ft

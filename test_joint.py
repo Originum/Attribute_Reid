@@ -42,6 +42,7 @@ parser.add_argument('--batch-size', default=50, type=int, help='batch size')
 parser.add_argument('--num-epoch', default=60, type=int, help='num of epoch')
 parser.add_argument('--num-workers', default=0, type=int, help='num_workers')
 parser.add_argument('--which-epoch',default='last', type=str, help='0,1,2,3...or last')
+parser.add_argument('--stride', default=2, type=int, help='stride')
 parser.add_argument('--print-table', default=True, action='store_true', help='print results with table format')
 args = parser.parse_args()
 
@@ -72,9 +73,9 @@ def load_network(network):
 def get_dataloader():
     image_datasets = {}
     image_datasets['gallery'] = Test_Dataset(data_dir, dataset_name=dataset_dict[args.dataset],
-                                             query_gallery='gallery')
+                                             query_gallery='gallery', SIZE = (384, 128))
     image_datasets['query'] = Test_Dataset(data_dir, dataset_name=dataset_dict[args.dataset],
-                                           query_gallery='query')
+                                           query_gallery='query', SIZE = (384, 128))
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=args.batch_size,
                                                  shuffle=True, num_workers=args.num_workers)
                   for x in ['gallery', 'query']}
@@ -95,7 +96,7 @@ num_id = len(test_loader.dataset.test_ids)
 ######################################################################
 # Model
 # ---------
-model = model_dict[args.model](num_label, 751)
+model = model_dict[args.model](num_label, 751, args.stride)
 model = load_network(model)
 if use_gpu:
     model = model.cuda()

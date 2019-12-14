@@ -15,7 +15,7 @@ from net import *
 # --------
 use_gpu = True
 Sigma = 1
-Lambda = 1
+Lambda = 0.4
 dataset_dict = {
     'market'  :  'Market-1501',
     'duke'  :  'DukeMTMC-reID',
@@ -37,10 +37,16 @@ parser = argparse.ArgumentParser(description='Training')
 parser.add_argument('--data-path', default='/root/dataset/', type=str, help='path to the dataset')
 parser.add_argument('--dataset', default='market', type=str, help='dataset')
 parser.add_argument('--model', default='resnet50_joint', type=str, help='model')
-parser.add_argument('--batch-size', default=16, type=int, help='batch size')
+parser.add_argument('--batch-size', default=32, type=int, help='batch size')
 parser.add_argument('--num-epoch', default=60, type=int, help='num of epoch')
 parser.add_argument('--which-epoch',default='last', type=str, help='0,1,2,3...or last')
 parser.add_argument('--num-workers', default=1, type=int, help='num_workers')
+parser.add_argument('--stride', default=2, type=int, help='stride')
+parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
+parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
+parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
+parser.add_argument('--continuing', action='store_true', help='continue the training' )
+
 args = parser.parse_args()
 
 assert args.dataset in dataset_dict.keys()
@@ -51,7 +57,14 @@ model_dir = os.path.join('./checkpoints', args.dataset, args.model)
 
 if not os.path.isdir(model_dir):
     os.makedirs(model_dir)
-
+print("Sigma:",Sigma)
+print("Lambda:",Lambda)
+print("batch_size:",args.batch_size)
+print("stride:",args.stride)
+print("erasing_p:",args.erasing_p)
+print("warm_epoch:",args.warm_epoch)
+print("lr:",args.lr)
+print("num_epoch:",args.num_epoch)
 ######################################################################
 # Function
 # --------
@@ -98,9 +111,9 @@ def draw_curve(current_epoch):
 # ---------
 image_datasets = {}
 image_datasets['train'] = Train_Dataset(data_dir, dataset_name=dataset_dict[args.dataset],
-                                        train_val='train')
+                                        train_val='train', erasing_p = args.erasing_p, SIZE = (384, 128))
 image_datasets['val'] = Train_Dataset(data_dir, dataset_name=dataset_dict[args.dataset],
-                                      train_val='query')
+                                      train_val='query', SIZE = (384, 128))
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=args.batch_size,
                                              shuffle=True, num_workers=args.num_workers)
               for x in ['train', 'val']}
@@ -119,8 +132,12 @@ weights = torch.exp(-distribution/(Sigma*Sigma))
 ######################################################################
 # Model and Optimizer
 # ------------------
-model = model_dict[args.model](num_label, num_id)
-#model = load_network(model)
+model = model_dict[args.model](num_label, num_id, args.stride)
+if args.continuing:
+	model = load_network(model)
+	print("continue the training")
+else:
+	print("the new training")
 if use_gpu:
     model = model.cuda()
     weights = weights.cuda()
@@ -128,9 +145,19 @@ if use_gpu:
 criterion_attr = nn.BCELoss(weight = weights)
 criterion_reid = nn.CrossEntropyLoss()
 # optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9,
-                            weight_decay = 5e-4, nesterov = True,)
-exp_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 20, gamma = 0.1,)
+
+
+ignored_params = (list(map(id, model.classifier_attribute.parameters()))+list(map(id, model.classifier_reid.parameters())))
+base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+optimizer = torch.optim.SGD([
+         {'params': base_params, 'lr': 0.1*args.lr},
+         {'params': model.classifier_attribute.parameters(), 'lr': args.lr},
+         {'params': model.classifier_reid.parameters(), 'lr': args.lr}
+     ], weight_decay = 5e-4, momentum = 0.9, nesterov = True)
+
+#optimizer = torch.optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9, weight_decay = 5e-4, nesterov = True)
+
+exp_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 40, gamma = 0.1)
 
 
 ######################################################################
@@ -138,6 +165,9 @@ exp_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 20, ga
 # ------------------
 def train_model(model, criterion_attr, criterion_reid, optimizer, scheduler, num_epochs, Lambda):
     since = time.time()
+
+    warm_up = 0.1 # We start from the 0.1*lrRate
+    warm_iteration = round(dataset_sizes['train']/args.batch_size)*args.warm_epoch # first 5 epoch
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -180,7 +210,13 @@ def train_model(model, criterion_attr, criterion_reid, optimizer, scheduler, num
 
                 joint_loss = Lambda * reid_loss + (1 - Lambda) * attr_loss
 
+
                 # backward + optimize only if in training phase
+                if epoch<args.warm_epoch and phase == 'train': 
+                    warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
+                    joint_loss *= warm_up
+
+
                 if phase == 'train':
                     joint_loss.backward()
                     optimizer.step()
