@@ -15,7 +15,7 @@ from net import *
 # --------
 use_gpu = True
 Sigma = 1
-Lambda = 0.4
+Lambda = 0.5
 dataset_dict = {
     'market'  :  'Market-1501',
     'duke'  :  'DukeMTMC-reID',

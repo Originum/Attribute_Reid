@@ -3,10 +3,14 @@ import torch
 import numpy as np
 #import time
 import os
+import argparse
 
+parser = argparse.ArgumentParser(description='Training')
+parser.add_argument('--frame_junk', action='store_true', help='frame_junk instead of camera_junk')
+args = parser.parse_args()
 #######################################################################
 # Evaluate
-def evaluate(qf,ql,qc,gf,gl,gc):
+def evaluate(qf,ql,qc,qfr,gf,gl,gc,gfr):
     query = qf.view(-1,1)
     # print(query.shape)
     score = torch.mm(gf,query)
@@ -17,14 +21,20 @@ def evaluate(qf,ql,qc,gf,gl,gc):
     index = index[::-1]
     # index = index[0:2000]
     # good index
-    query_index = np.argwhere(gl==ql)
-    camera_index = np.argwhere(gc==qc)
+    query_index = np.argwhere(gl == ql)
+    junk_index1 = np.argwhere(gl == -1)
+    if args.frame_junk:
+        #print("we use the frame_junk")
+        frame_index = np.argwhere(gfr == qfr)
+        junk_index2 = np.intersect1d(query_index, frame_index)
+        good_index = np.setdiff1d(query_index, frame_index, assume_unique=True)
+    else:
+        #print("we use the camera_junk")
+        camera_index = np.argwhere(gc == qc)
+        junk_index2 = np.intersect1d(query_index, camera_index)
+        good_index = np.setdiff1d(query_index, camera_index, assume_unique=True)
+    junk_index = np.append(junk_index2, junk_index1)  # .flatten())
 
-    good_index = np.setdiff1d(query_index, camera_index, assume_unique=True)
-    junk_index1 = np.argwhere(gl==-1)
-    junk_index2 = np.intersect1d(query_index, camera_index)
-    junk_index = np.append(junk_index2, junk_index1) #.flatten())
-    
     CMC_tmp = compute_mAP(index, good_index, junk_index)
     return CMC_tmp
 
@@ -63,9 +73,11 @@ result = scipy.io.loadmat('pytorch_result.mat')
 query_feature = torch.FloatTensor(result['query_f'])
 query_cam = result['query_cam'][0]
 query_label = result['query_label'][0]
+query_frame = result['query_frame']
 gallery_feature = torch.FloatTensor(result['gallery_f'])
 gallery_cam = result['gallery_cam'][0]
 gallery_label = result['gallery_label'][0]
+gallery_frame = result['gallery_frame']
 
 multi = os.path.isfile('multi_query.mat')
 
@@ -79,12 +91,11 @@ if multi:
 query_feature = query_feature.cuda()
 gallery_feature = gallery_feature.cuda()
 
-print(query_feature.shape)
 CMC = torch.IntTensor(len(gallery_label)).zero_()
 ap = 0.0
 #print(query_label)
 for i in range(len(query_label)):
-    ap_tmp, CMC_tmp = evaluate(query_feature[i],query_label[i],query_cam[i],gallery_feature,gallery_label,gallery_cam)
+    ap_tmp, CMC_tmp = evaluate(query_feature[i],query_label[i],query_cam[i],query_frame[i],gallery_feature,gallery_label,gallery_cam,gallery_frame)
     if CMC_tmp[0]==-1:
         continue
     CMC = CMC + CMC_tmp

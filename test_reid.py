@@ -37,6 +37,7 @@ parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--multi', default=False, action='store_true', help='use multiple query' )
 parser.add_argument('--ms',default='1', type=str,help='multiple_scale: e.g. 1 1,1.1  1,1.1,1.2')
 parser.add_argument('--stride', default=2, type=int, help='stride')
+parser.add_argument('--frame_junk', action='store_true', help='frame_junk instead of camera_junk')
 
 opt = parser.parse_args()
 
@@ -151,23 +152,27 @@ def extract_feature(model,dataloaders):
 def get_id(img_path):
     camera_id = []
     labels = []
+    frames = []
     for path, v in img_path:
         #filename = path.split('/')[-1]
         filename = os.path.basename(path)
         label = filename[0:4]
         camera = filename.split('c')[1]
+        frame = filename[0:16]
         if label[0:2]=='-1':
             labels.append(-1)
         else:
             labels.append(int(label))
         camera_id.append(int(camera[0]))
-    return camera_id, labels
+        frames.append(frame)
+    return camera_id, labels, frames
+
 
 gallery_path = image_datasets['gallery'].imgs
 query_path = image_datasets['query'].imgs
 
-gallery_cam,gallery_label = get_id(gallery_path)
-query_cam,query_label = get_id(query_path)
+gallery_cam,gallery_label,gallery_frame = get_id(gallery_path)
+query_cam,query_label,query_frame = get_id(query_path)
 
 if opt.multi:
     mquery_path = image_datasets['multi-query'].imgs
@@ -197,12 +202,15 @@ with torch.no_grad():
         mquery_feature = extract_feature(model,dataloaders['multi-query'])
     
 # Save to Matlab for check
-result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
+result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'gallery_frame':gallery_frame,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam,'query_frame':query_frame}
 scipy.io.savemat('pytorch_result.mat',result)
 
 print(opt.name)
 result = './model/%s/result.txt'%opt.name
-os.system('python3 evaluate_gpu.py | tee -a %s'%result)
+if opt.frame_junk:
+    os.system('python3 evaluate_gpu.py --frame_junk | tee -a %s'%result)
+else:
+    os.system('python3 evaluate_gpu.py | tee -a %s'%result)
 
 if opt.multi:
     result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
