@@ -43,12 +43,15 @@ parser.add_argument('--num-epoch', default=60, type=int, help='num of epoch')
 parser.add_argument('--num-workers', default=0, type=int, help='num_workers')
 parser.add_argument('--which-epoch',default='last', type=str, help='0,1,2,3...or last')
 parser.add_argument('--stride', default=2, type=int, help='stride')
+parser.add_argument('--alpha', default=0.5, type=float, help='alpha')
+parser.add_argument('--fusion', action='store_true', help='fusion')
 parser.add_argument('--print-table', default=True, action='store_true', help='print results with table format')
 args = parser.parse_args()
 
 assert args.dataset in dataset_dict.keys()
 assert args.model in model_dict.keys()
 
+alpha = args.alpha
 batch_size = args.batch_size
 data_dir = args.data_path
 model_dir = os.path.join('./checkpoints', args.dataset, args.model)
@@ -109,23 +112,57 @@ model.train(False)  # Set model to evaluate mode
 preds_tensor = np.empty(shape=[0, num_label], dtype=np.byte)   # shape = (num_sample, num_label)
 labels_tensor = np.empty(shape=[0, num_label], dtype=np.byte)   # shape = (num_sample, num_label)
 
-# Iterate over data.
-for count, (images, labels, ids, file_name) in enumerate(test_loader):
-    # move input to GPU
-    if use_gpu:
-        images = images.cuda()
-    # forward
-    outputs, outputs_reid = model(images)
-    preds = torch.gt(outputs, torch.ones_like(outputs)/2 )
-    # transform to numpy format
-    labels = labels.cpu().numpy()
-    preds = preds.cpu().numpy()
-    # append
-    preds_tensor = np.append(preds_tensor, preds, axis=0)
-    labels_tensor = np.append(labels_tensor, labels, axis=0)
-    # print info
-    if count*batch_size % 5000 == 0:
-        print('Step: {}/{}'.format(count*batch_size, num_sample))
+if args.fusion:
+	print('fusion rate: {}'.format(alpha))
+	preds_dict = {}
+	labels_dict = {}
+	# Iterate over data.
+	for count, (images, labels, ids, file_name) in enumerate(test_loader):
+	    # move input to GPU
+	    if use_gpu:
+	        images = images.cuda()
+	    # forward
+	    outputs, outputs_reid = model(images)
+	    # transform to numpy format
+	    labels = labels.cpu().numpy()
+	    outputs = outputs.cpu().detach().numpy() 
+
+	    for ind in range(len(ids)):
+	    	if ids[ind] in labels_dict.keys():
+	    		preds_dict[ids[ind]] = preds_dict[ids[ind]] * alpha + outputs[ind,:] * (1 - alpha)
+	    	else:
+	    		labels_dict[ids[ind]] = labels[ind,:]
+	    		preds_dict[ids[ind]] = outputs[ind,:]
+	    # print info
+	    if count*batch_size % 5000 == 0:
+	        print('Step: {}/{}'.format(count*batch_size, num_sample))
+	print(len(preds_dict))
+	print(len(labels_dict))
+	for key in labels_dict:
+		# append
+		preds = np.array([preds_dict.get(key)]) > 0.5
+		preds_tensor = np.append(preds_tensor, preds, axis=0)
+		labels_tensor = np.append(labels_tensor, np.array([labels_dict.get(key)]), axis=0)
+
+else:
+	# Iterate over data.
+	for count, (images, labels, ids, file_name) in enumerate(test_loader):
+	 	# move input to GPU
+	    if use_gpu:
+	        images = images.cuda()
+	    # forward
+	    outputs, outputs_reid = model(images)
+	    preds = torch.gt(outputs, torch.ones_like(outputs)/2 )
+	    # transform to numpy format
+	    labels = labels.cpu().numpy()
+	    preds = preds.cpu().numpy()
+	    
+	    # append
+	    preds_tensor = np.append(preds_tensor, preds, axis=0)
+	    labels_tensor = np.append(labels_tensor, labels, axis=0)
+	    # print info
+	    if count*batch_size % 5000 == 0:
+	        print('Step: {}/{}'.format(count*batch_size, num_sample))
 
 # Evaluation.
 accuracy_list = []
